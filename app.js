@@ -1,671 +1,358 @@
-// --- PHASE 1: DATA MODELING (The Navigable Graph) ---
+// BMCC Path Pointer - Main Application Logic
 
-// 1. Define NODES (Locations and Coordinates)
-const NODES = {};
+// Declare THREE variable as global
+window.THREE = window.THREE || {}
 
-// Helper function to create the nodes for a single floor
-const createFloorNodes = (floorNum, zCoord) => {
-    const p = String(floorNum);
-    
-    // Normalize Y-coordinate to fit the viewable area (350px container height)
-    // Scale factor adjusted for a better floor layout within the 350px height
-    const normalizeY = (desmosY) => 350 - (desmosY * 6.5); 
-
-    return {
-        // Classrooms (Spread across the X-axis for visualization)
-        [`${p}01`]: { x: 500, y: normalizeY(20), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}03`]: { x: 500, y: normalizeY(5), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}04`]: { x: 450, y: normalizeY(5), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}05`]: { x: 300, y: normalizeY(5), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}06`]: { x: 200, y: normalizeY(5), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}07`]: { x: 0, y: normalizeY(5), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}08`]: { x: 20, y: normalizeY(20), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}09`]: { x: 50, y: normalizeY(30), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}10`]: { x: 20, y: normalizeY(40), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}11`]: { x: 0, y: normalizeY(50), z: zCoord, floor: floorNum, tags: ['classroom'] },
-        [`${p}12`]: { x: 50, y: normalizeY(45), z: zCoord, floor: floorNum, tags: ['classroom'] },
-
-        // Facilities & Utility Points
-        [`${p}02`]: { x: 400, y: normalizeY(10), z: zCoord, floor: floorNum, tags: ['study_section', 'facility'] }, 
-        [`${p}SR`]: { x: 450, y: normalizeY(40), z: zCoord, floor: floorNum, tags: ['staff_room', 'office'] },
-        [`${p}C`]: { x: 600, y: normalizeY(40), z: zCoord, floor: floorNum, tags: ['couches', 'lounge'] },
-        [`${p}B`]: { x: 350, y: normalizeY(30), z: zCoord, floor: floorNum, tags: ['bathroom', 'facility'] },
-        [`${p}T`]: { x: 250, y: normalizeY(10), z: zCoord, floor: floorNum, tags: ['tables', 'lounge'] },
-
-        // Vertical Transport & Intersections (These are connection points)
-        [`${p}E1`]: { x: 200, y: normalizeY(20), z: zCoord, floor: floorNum, tags: ['elevator', 'accessible'] },
-        [`${p}E2`]: { x: 300, y: normalizeY(20), z: zCoord, floor: floorNum, tags: ['elevator', 'accessible'] },
-        [`${p}SS`]: { x: 500, y: normalizeY(30), z: zCoord, floor: floorNum, tags: ['stairs', 'south_stairwell'] },
-        [`${p}NS`]: { x: 100, y: normalizeY(20), z: zCoord, floor: floorNum, tags: ['stairs', 'north_stairwell'] },
-        [`${p}H1`]: { x: 250, y: normalizeY(25), z: zCoord, floor: floorNum, tags: ['intersection'] },
-    };
-};
-
-// Populate NODES for all three floors
-Object.assign(NODES, createFloorNodes(8, 0));
-Object.assign(NODES, createFloorNodes(9, 1));
-Object.assign(NODES, createFloorNodes(10, 2));
-
-// 2. Define GRAPH (Adjacency List with Weights - weight = time in seconds)
-const GRAPH = {};
-
-// Helper to add bidirectional connections
-function addConnection(nodeA, nodeB, weight, props = {}) {
-    if (!GRAPH[nodeA]) GRAPH[nodeA] = [];
-    if (!GRAPH[nodeB]) GRAPH[nodeB] = [];
-    
-    // Check if the connection already exists to prevent duplicates (optional but good practice)
-    const existsA = GRAPH[nodeA].some(edge => edge.neighbor === nodeB);
-    const existsB = GRAPH[nodeB].some(edge => edge.neighbor === nodeA);
-
-    if (!existsA) GRAPH[nodeA].push({ neighbor: nodeB, weight, ...props });
-    if (!existsB) GRAPH[nodeB].push({ neighbor: nodeA, weight, ...props });
+// State management
+const state = {
+  startLocation: "",
+  endLocation: "",
+  showRoute: false,
 }
 
-// Create intra-floor connections for each floor
-function createFloorConnections(prefix) {
-    const center = `${prefix}H1`;
-    
-    // Group all non-transport nodes
-    const destinations = [
-        `${prefix}01`, `${prefix}03`, `${prefix}04`, `${prefix}05`, `${prefix}06`, 
-        `${prefix}07`, `${prefix}08`, `${prefix}09`, `${prefix}10`, `${prefix}11`, 
-        `${prefix}12`, `${prefix}02`, `${prefix}SR`, `${prefix}C`, `${prefix}B`, `${prefix}T`
-    ].filter(id => NODES[id]); // Filter out non-existent nodes for safety
-    
-    // All destinations connect to the central intersection H1 (Hallway 1)
-    destinations.forEach(room => {
-        // Use a variable weight based on distance from intersection (represented by x/y distance in visualization)
-        const node = NODES[room];
-        const centerNode = NODES[center];
-        const dist = Math.sqrt(Math.pow(node.x - centerNode.x, 2) + Math.pow(node.y - centerNode.y, 2));
-        const weight = Math.ceil(dist / 10) + 5; // Base 5s + 1s per 10 visualization units
-        addConnection(room, center, weight);
-    });
-    
-    // Transport hubs connect to the central intersection
-    const transports = [`${prefix}E1`, `${prefix}E2`, `${prefix}SS`, `${prefix}NS`].filter(id => NODES[id]);
-    transports.forEach(trans => {
-        if (NODES[trans]) addConnection(trans, center, 10); // Standard 10s walk to intersection
-    });
-}
+// Three.js scene variables
+let scene, camera, renderer, floorMesh, pathLine
+let controls
 
-// Create connections for all floors
-createFloorConnections('8');
-createFloorConnections('9');
-createFloorConnections('10');
+// Initialize when DOM is loaded
+document.addEventListener("DOMContentLoaded", () => {
+  // DOM elements
+  const startInput = document.getElementById("start")
+  const endInput = document.getElementById("end")
+  const findRouteBtn = document.getElementById("findRouteBtn")
+  const clearBtn = document.getElementById("clearBtn")
+  const routeInfo = document.getElementById("routeInfo")
+  const routeSteps = document.getElementById("routeSteps")
+  const sceneContainer = document.querySelector(".scene")
 
-// INTER-FLOOR CONNECTIONS (Vertical Transport)
-// Travel time between floors: Elevator (40s), Stairs (25s)
+  // Update button states
+  function updateButtonStates() {
+    const hasLocations = state.startLocation && state.endLocation
+    findRouteBtn.disabled = !hasLocations
+    clearBtn.disabled = !state.showRoute
+  }
 
-// Elevators (Accessible routes)
-addConnection('8E1', '9E1', 40, { accessible: true, vertical: true });
-addConnection('9E1', '10E1', 40, { accessible: true, vertical: true });
-addConnection('8E2', '9E2', 40, { accessible: true, vertical: true });
-addConnection('9E2', '10E2', 40, { accessible: true, vertical: true });
+  // Input handlers
+  startInput.addEventListener("input", (e) => {
+    state.startLocation = e.target.value
+    updateButtonStates()
+  })
 
-// Stairs (Not accessible)
-addConnection('8SS', '9SS', 25, { vertical: true });
-addConnection('9SS', '10SS', 25, { vertical: true });
-addConnection('8NS', '9NS', 25, { vertical: true });
-addConnection('9NS', '10NS', 25, { vertical: true });
+  endInput.addEventListener("input", (e) => {
+    state.endLocation = e.target.value
+    updateButtonStates()
+  })
 
+  // Find route handler
+  findRouteBtn.addEventListener("click", () => {
+    if (state.startLocation && state.endLocation) {
+      state.showRoute = true
 
-// --- PHASE 2: PATHFINDING (Dijkstra's Algorithm) ---
+      // Generate random intermediate floor
+      const intermediateFloor = Math.floor(Math.random() * 3) + 8
 
-/**
- * Finds the shortest path using Dijkstra's algorithm.
- * @param {string} startNode - The ID of the starting node.
- * @param {string} endNode - The ID of the destination node.
- * @param {boolean} isAccessible - If true, restricts travel to elevator-only between floors.
- * @returns {{path: string[], time: number}} The path array and total time.
- */
-function dijkstra(startNode, endNode, isAccessible) {
-    const distances = {};
-    const previous = {};
-    const priorityQueue = []; // Using array for simple implementation, min-heap needed for performance
-    const visited = new Set();
-
-    for (const node in NODES) {
-        distances[node] = Infinity;
-        previous[node] = null;
-    }
-    distances[startNode] = 0;
-    priorityQueue.push(startNode);
-
-    // Simple priority queue logic (linear search)
-    const findMinDistanceNode = () => {
-        let minTime = Infinity;
-        let minNode = null;
-        let minIndex = -1;
-
-        for (let i = 0; i < priorityQueue.length; i++) {
-            const node = priorityQueue[i];
-            if (distances[node] < minTime) {
-                minTime = distances[node];
-                minNode = node;
-                minIndex = i;
-            }
-        }
-        if (minNode) priorityQueue.splice(minIndex, 1);
-        return minNode;
-    };
-
-    while (priorityQueue.length > 0) {
-        const currentNode = findMinDistanceNode();
-        if (!currentNode) break;
-
-        if (currentNode === endNode) break;
-
-        const neighbors = GRAPH[currentNode] || [];
-        for (const edge of neighbors) {
-            const neighbor = edge.neighbor;
-            
-            // ACCESSIBILITY CONSTRAINT CHECK:
-            // If accessible mode is on, skip connections that use stairs or are explicitly marked non-accessible
-            const isStairNode = NODES[currentNode].tags.includes('stairs') || NODES[neighbor].tags.includes('stairs');
-            
-            if (isAccessible && isStairNode && edge.vertical) {
-                continue; // Skip vertical stair connections in accessible mode
-            }
-            
-            const weight = edge.weight;
-            const newDistance = distances[currentNode] + weight;
-            
-            if (newDistance < distances[neighbor]) {
-                distances[neighbor] = newDistance;
-                previous[neighbor] = currentNode;
-                if (!priorityQueue.includes(neighbor)) {
-                    priorityQueue.push(neighbor);
-                }
-            }
-        }
-    }
-
-    const path = [];
-    let current = endNode;
-    while (current !== null) {
-        path.unshift(current);
-        current = previous[current];
-    }
-
-    return {
-        path: path[0] === startNode ? path : [],
-        time: distances[endNode] !== Infinity ? distances[endNode] : 0
-    };
-}
-
-// --- PHASE 3: CONVERSATIONAL DELIVERY (Using Template for LLM-style output) ---
-
-/**
- * Generates human-readable, contextual directions from the calculated path.
- * @param {string[]} path - The array of node IDs forming the optimal path.
- * @param {number} totalTime - The total travel time in seconds.
- * @param {boolean} isAccessible - If the route was calculated using accessible mode.
- * @returns {string} The formatted conversational output.
- */
-function generateConversationalOutput(path, totalTime, isAccessible) {
-    if (path.length <= 1) {
-        return "I apologize, but a path between these locations could not be found under the given constraints, or you are already there.";
-    }
-
-    let directions = [];
-    const minutes = Math.floor(totalTime / 60);
-    const seconds = totalTime % 60;
-    
-    directions.push(`**Optimal Route Found! Total Travel Time: ${minutes}m ${seconds}s**`);
-    directions.push(isAccessible ? `*(♿ Using elevator-only route.)*` : `*(🚶 Using stairs and elevators.)*`);
-    directions.push('---');
-
-    for (let i = 0; i < path.length - 1; i++) {
-        const currentId = path[i];
-        const nextId = path[i + 1];
-        const current = NODES[currentId];
-        const next = NODES[nextId];
-        const currentFloor = current.floor;
-        const nextFloor = next.floor;
-
-        if (currentFloor !== nextFloor) {
-            const transportType = next.tags.includes('stairs') ? 'Stairwell' : 'Elevator';
-            const verb = nextFloor > currentFloor ? 'ascend' : 'descend';
-            directions.push(`• **Floor Change:** Proceed to the **${transportType} (${currentId})** and **${verb}** to Floor ${nextFloor}.`);
-        } 
-        else {
-            let directionText = `• From **${currentId}** (Floor ${currentFloor}), move towards **${nextId}**.`;
-            
-            if (current.tags.includes('intersection')) {
-                if (next.tags.includes('classroom') || next.tags.includes('staff_room')) {
-                    directionText = `• At the main intersection (**${currentId}**), take the corridor directly to **${nextId}** (Your destination is nearby).`;
-                } else if (next.tags.includes('elevator') || next.tags.includes('stairs')) {
-                    const dir = next.tags.includes('north_stairwell') ? 'North' : next.tags.includes('south_stairwell') ? 'South' : '';
-                    directionText = `• Follow the main hallway toward the ${dir} **${NODES[nextId].tags.includes('stairs') ? 'Stairwell' : 'Elevator'} bank (${nextId})**.`;
-                }
-            } else if (current.tags.includes('classroom')) {
-                directionText = `• Head out of **${currentId}** toward the main hallway intersection (**${nextId}**).`;
-            } else if (current.tags.includes('elevator') || current.tags.includes('stairs')) {
-                 directionText = `• Exit the ${current.tags.includes('elevator') ? 'Elevator' : 'Stairwell'} area (${currentId}) and proceed to the central hall (**${nextId}**).`;
-            }
-            directions.push(directionText);
-        }
-    }
-    
-    // --- Contextual Tip Generation ---
-    const lastNode = path[path.length-1];
-    const destinationFloor = NODES[lastNode].floor;
-    const studyNode = `${destinationFloor}02`; // Assuming 02 is a facility/lounge on every floor
-    
-    if (NODES[studyNode] && lastNode !== studyNode) {
-        const studyPath = dijkstra(lastNode, studyNode, false); // Calculate shortest path to study section on destination floor
-        const studyTime = Math.ceil(studyPath.time);
-        
-        if (studyPath.path.length > 1 && totalTime < (4 * 60)) { // Only suggest if total trip is short
-            directions.push(`\n---`);
-            directions.push(`\n**💡 Contextual Tip:** Need a break? The private study section (**${studyNode}**) is only **${studyTime}s** walk from your destination.`);
-        }
-    }
-    
-    directions.push(`\n---`);
-    directions.push(`**✅ Final Destination:** You have arrived at **${lastNode}** (Floor ${destinationFloor}).`);
-
-    return directions.join('\n');
-}
-
-// --- GLOBALS FOR INTERACTION ---
-let isDragging = false;
-let previousMouseX = 0;
-let previousMouseY = 0;
-// ADJUSTED: More dramatic initial rotation to immediately show the Z separation
-let rotateX = 55; // Initial pitch (shallow)
-let rotateY = -45; // Initial yaw (side-view)
-
-/**
- * Updates the CSS transform property of the 3D scene.
- */
-function updateSceneTransform() {
-    const scene = document.getElementById('scene-3d-layers');
-    if (scene) {
-        // Clamp rotation angles to prevent flipping or excessive rotations
-        rotateX = Math.max(20, Math.min(90, rotateX)); // Keep X between 20 (shallow) and 90 (top-down)
-        
-        // ADJUSTED: Change overall scene transform to properly center the widely separated planes
-        scene.style.transform = `translateY(180px) translateZ(-250px) rotateX(${rotateX}deg) rotateZ(${rotateY}deg)`;
-    }
-}
-
-/**
- * Sets up mouse event listeners for rotating the 3D scene.
- */
-function initSceneInteraction() {
-    const scene = document.getElementById('scene-3d-layers');
-    if (!scene) return;
-    
-    // Prevent default drag behaviors that conflict with rotation
-    scene.addEventListener('dragstart', (e) => e.preventDefault());
-
-    // MOUSE DOWN: Start dragging
-    scene.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        previousMouseX = e.clientX;
-        previousMouseY = e.clientY;
-        scene.style.cursor = 'grabbing';
-    });
-
-    // TOUCH START: Start dragging for touchscreens
-    scene.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-            isDragging = true;
-            previousMouseX = e.touches[0].clientX;
-            previousMouseY = e.touches[0].clientY;
-        }
-    }, { passive: true });
-
-    // MOUSE MOVE: Update rotation
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        
-        const deltaX = e.clientX - previousMouseX;
-        const deltaY = e.clientY - previousMouseY;
-
-        // Rotate Y (yaw) based on horizontal movement
-        rotateY += deltaX * 0.2; 
-        
-        // Rotate X (pitch) based on vertical movement (inverted for intuitive drag)
-        rotateX -= deltaY * 0.2;
-        
-        previousMouseX = e.clientX;
-        previousMouseY = e.clientY;
-        
-        updateSceneTransform();
-    });
-    
-    // TOUCH MOVE: Update rotation for touchscreens
-    document.addEventListener('touchmove', (e) => {
-        if (!isDragging || e.touches.length !== 1) return;
-        
-        const clientX = e.touches[0].clientX;
-        const clientY = e.touches[0].clientY;
-
-        const deltaX = clientX - previousMouseX;
-        const deltaY = clientY - previousMouseY;
-
-        // Rotate Y (yaw) based on horizontal movement
-        rotateY += deltaX * 0.2; 
-        
-        // Rotate X (pitch) based on vertical movement (inverted for intuitive drag)
-        rotateX -= deltaY * 0.2;
-        
-        previousMouseX = clientX;
-        previousMouseY = clientY;
-        
-        updateSceneTransform();
-    }, { passive: true });
-
-    // MOUSE UP/TOUCH END: Stop dragging
-    document.addEventListener('mouseup', () => {
-        isDragging = false;
-        scene.style.cursor = 'grab';
-    });
-    document.addEventListener('touchend', () => {
-        isDragging = false;
-    });
-    document.addEventListener('touchcancel', () => {
-        isDragging = false;
-    });
-    
-    // Initial transform application
-    updateSceneTransform();
-}
-
-/**
- * Main function triggered by the Calculate button.
- */
-function calculateRoute() {
-    const startNode = document.getElementById('start-node').value;
-    const endNode = document.getElementById('end-node').value;
-    const isAccessible = document.getElementById('accessible-mode').checked;
-
-    const outputDiv = document.getElementById('llm-output');
-    
-    if (!startNode || !endNode || startNode === endNode) {
-        outputDiv.innerHTML = '<p class="text-red-500 font-semibold p-4 bg-red-100 rounded-lg">Please select different starting and ending locations.</p>';
-        // Re-initialize placeholder and interaction
-        drawInitialMapPlaceholder();
-        initSceneInteraction();
-        return;
-    }
-
-    const { path, time } = dijkstra(startNode, endNode, isAccessible);
-    
-    // Display conversational output
-    outputDiv.innerHTML = '<pre class="bg-gray-50 border border-gray-200 p-4 rounded-lg whitespace-pre-wrap font-mono text-gray-800">' + generateConversationalOutput(path, time, isAccessible) + '</pre>';
-
-    // Draw visualization and initialize interaction
-    drawMapVisualization(startNode, endNode, path);
-    initSceneInteraction();
-}
-
-// --- CLEAN LAYERED VISUALIZATION ---
-
-/**
- * Draws the layered, pseudo-3D map visualization.
- * @param {string} startNode - The starting node ID.
- * @param {string} endNode - The ending node ID.
- * @param {string[]} path - The calculated path of node IDs.
- */
-function drawMapVisualization(startNode, endNode, path) {
-    const container = document.getElementById('map-visualization');
-    container.innerHTML = ''; 
-    
-    // Create main scene container
-    const scene = document.createElement('div');
-    scene.id = 'scene-3d-layers';
-    // Add 'cursor-grab' class to indicate interactivity
-    scene.className = 'w-full h-[600px] relative bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg p-4 cursor-grab'; 
-    container.appendChild(scene);
-
-    // Floor configurations - ordered for stacking visualization (10 on top)
-    const floors = [
-        { number: 10, color: 'bg-blue-50', border: 'border-blue-300', label: 'Floor 10' },
-        { number: 9, color: 'bg-green-50', border: 'border-green-300', label: 'Floor 9' },
-        { number: 8, color: 'bg-red-50', border: 'border-red-300', label: 'Floor 8' }
-    ];
-
-    const floorDOMContainers = {};
-    const floorLeftOffset = 50;
-    const floorTopFixedY = 50; // Fixed top margin for the whole stack
-    // REMOVED ySeparation (120) from individual floor transform
-    const zSeparation = 350; // INCREASED Depth separation significantly
-    const nodeCenterOffset = 7; 
-
-    // 1. Create each floor layer and draw all its nodes
-    floors.forEach((floor, index) => {
-        const floorContainer = document.createElement('div');
-        // Z-stacking: Higher floor has higher z-index
-        const zIndex = 30 + (floors.length - index) * 10; 
-        
-        // Calculate 3D transforms
-        // REMOVED yTranslate, using only fixed top (50px) for layout consistency
-        const zTranslate = index * -zSeparation; // Negative Z pulls closer to the camera/viewer in 3D space
-        
-        floorContainer.className = `floor-plane absolute ${floor.color} ${floor.border} border-2 rounded-lg shadow-xl`;
-        floorContainer.style.width = '550px';
-        floorContainer.style.height = '350px';
-        
-        // Set fixed position and use transform for stacking
-        floorContainer.style.left = `${floorLeftOffset}px`;
-        floorContainer.style.top = `${floorTopFixedY}px`; 
-        
-        // APPLY THE Z TRANSLATION ONLY for the floating effect
-        // All planes start at the same (Y) vertical position, but are separated in depth (Z).
-        floorContainer.style.transform = `translateZ(${zTranslate}px)`;
-        
-        floorContainer.style.zIndex = zIndex; 
-        floorContainer.id = `floor-${floor.number}`;
-        
-        // Floor label
-        const floorLabel = document.createElement('div');
-        floorLabel.className = 'absolute -top-8 left-0 bg-white px-3 py-1 rounded-lg shadow-md font-bold text-gray-700 text-sm';
-        floorLabel.textContent = floor.label;
-        scene.appendChild(floorLabel);
-
-        // Draw nodes for this floor
-        const floorNodes = Object.keys(NODES).filter(id => NODES[id].floor === floor.number);
-        floorNodes.forEach(nodeId => {
-            const node = NODES[nodeId];
-            const isStart = nodeId === startNode;
-            const isEnd = nodeId === endNode;
-            const isPath = path.includes(nodeId);
-
-            const nodeDiv = document.createElement('div');
-            let color = 'bg-gray-400';
-            let size = 'w-3 h-3';
-            let ring = '';
-            
-            if (isStart) { 
-                color = 'bg-green-600'; 
-                ring = 'ring-4 ring-green-300';
-                size = 'w-5 h-5'; 
-            } 
-            else if (isEnd) { 
-                color = 'bg-red-600'; 
-                ring = 'ring-4 ring-red-300';
-                size = 'w-5 h-5'; 
-            } 
-            else if (isPath) { 
-                color = 'bg-indigo-500'; 
-                ring = 'ring-2 ring-indigo-200';
-                size = 'w-4 h-4'; 
-            } 
-            else if (node.tags.includes('elevator')) { 
-                color = 'bg-blue-500'; 
-            } 
-            else if (node.tags.includes('stairs')) { 
-                color = 'bg-orange-500'; 
-            } 
-            else if (node.tags.includes('facility') || node.tags.includes('lounge')) { 
-                color = 'bg-yellow-500'; 
-            }
-
-            nodeDiv.className = `absolute rounded-full ${color} ${size} ${ring} cursor-pointer border-2 border-white shadow-md node-layer`;
-            nodeDiv.style.left = `${node.x}px`;
-            nodeDiv.style.top = `${node.y}px`;
-            nodeDiv.title = `${nodeId} (${node.tags.join(', ')})`;
-            
-            // Add label for important nodes
-            if (isStart || isEnd || node.tags.includes('elevator') || node.tags.includes('stairs') || nodeId === '8H1' || nodeId === '9H1' || nodeId === '10H1') {
-                const label = document.createElement('div');
-                label.className = 'absolute text-xs font-medium -top-5 -left-2 bg-white px-1 rounded text-gray-700 shadow-sm whitespace-nowrap';
-                label.textContent = nodeId;
-                nodeDiv.appendChild(label);
-            }
-
-            floorContainer.appendChild(nodeDiv);
-        });
-
-        scene.appendChild(floorContainer);
-        floorDOMContainers[floor.number] = floorContainer;
-    });
-
-    // 2. Draw INTRA-FLOOR PATHS using SVG on each floor container
-    for (let i = 0; i < path.length - 1; i++) {
-        const currentId = path[i];
-        const nextId = path[i + 1];
-        const current = NODES[currentId];
-        const next = NODES[nextId];
-
-        if (current.floor === next.floor) {
-            const floorContainer = floorDOMContainers[current.floor];
-
-            let svg = floorContainer.querySelector('svg');
-            if (!svg) {
-                svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                svg.setAttribute('width', '100%');
-                svg.setAttribute('height', '100%');
-                svg.style.position = 'absolute';
-                svg.style.top = '0';
-                svg.style.left = '0';
-                floorContainer.prepend(svg); // Prepend so lines are behind nodes
-            }
-
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-
-            line.setAttribute('x1', current.x + nodeCenterOffset);
-            line.setAttribute('y1', current.y + nodeCenterOffset);
-            line.setAttribute('x2', next.x + nodeCenterOffset);
-            line.setAttribute('y2', next.y + nodeCenterOffset);
-            
-            line.setAttribute('stroke', '#4f46e5'); // Indigo 600
-            line.setAttribute('stroke-width', '3');
-            line.setAttribute('stroke-linecap', 'round');
-            
-            svg.appendChild(line);
-        }
-    }
-
-    // 3. Draw VERTICAL PATHS using a main canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = 650; // Match the scene width
-    canvas.height = 600; // Match the scene height
-    canvas.className = 'absolute top-0 left-0 pointer-events-none';
-    scene.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-
-    if (path.length > 1) {
-        ctx.strokeStyle = '#10b981'; // Emerald 500 for vertical path
-        ctx.lineWidth = 4; 
-        ctx.setLineDash([8, 6]);
-
-        for (let i = 0; i < path.length - 1; i++) {
-            const currentId = path[i];
-            const nextId = path[i + 1];
-            const current = NODES[currentId];
-            const next = NODES[nextId];
-            
-            if (current.floor !== next.floor) {
-                const currentFloorIndex = floors.findIndex(f => f.number === current.floor);
-                const nextFloorIndex = floors.findIndex(f => f.number === next.floor);
-                
-                // --- COORDINATES MUST MATCH 3D TRANSFORMS ---
-                // X = Floor Left Offset + Node X + Node Center Offset
-                const startX = floorLeftOffset + current.x + nodeCenterOffset;
-                
-                // Y = Fixed Top (50) + Node Y on plane + Node Center Offset
-                const startY = floorTopFixedY + current.y + nodeCenterOffset; 
-                
-                const endX = floorLeftOffset + next.x + nodeCenterOffset;
-                const endY = floorTopFixedY + next.y + nodeCenterOffset; 
-                
-                ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(endX, endY);
-                ctx.stroke();
-            }
-        }
-    }
-}
-
-/**
- * Draws the initial placeholder text in the map area.
- */
-function drawInitialMapPlaceholder() {
-    const container = document.getElementById('map-visualization');
-    container.className = 'rounded-xl shadow-inner border border-gray-200';
-    container.innerHTML = `
-        <div id="scene-3d-layers" class="w-full h-[600px] relative bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg p-4 cursor-grab" style="transform-style: preserve-3d; transition: transform 0.1s ease-out;">
-            <div class="h-full flex items-center justify-center text-gray-500">
-                <div class="text-center">
-                    <div class="text-6xl mb-4">🗺️</div>
-                    <p class="text-lg font-medium">Multi-Floor Map Ready</p>
-                    <p class="text-sm mt-2 text-gray-400">Select start/end and click Calculate to visualize the route.</p>
-                    <p class="text-xs mt-4 text-indigo-400">Click and drag to change perspective!</p>
-                </div>
-            </div>
+      // Display route
+      routeSteps.innerHTML = `
+        <div class="route-step">
+          <span class="step-badge">1</span>
+          <span>Start at ${state.startLocation}</span>
         </div>
-    `;
-}
+        <div class="route-step">
+          <span class="step-badge">2</span>
+          <span>Take elevator to Floor ${intermediateFloor}</span>
+        </div>
+        <div class="route-step">
+          <span class="step-badge">3</span>
+          <span>Arrive at ${state.endLocation}</span>
+        </div>
+      `
 
-// --- INITIALIZATION ---
+      routeInfo.style.display = "block"
 
-window.onload = function() {
-    const startSelect = document.getElementById('start-node');
-    const endSelect = document.getElementById('end-node');
-    
-    const floorRoomMap = {};
-    for (const id in NODES) {
-        // Only include classrooms, staff rooms, and key facilities in the dropdowns
-        if (NODES[id].tags.includes('classroom') || NODES[id].tags.includes('staff_room') || NODES[id].tags.includes('lounge')) {
-            const floor = NODES[id].floor;
-            if (!floorRoomMap[floor]) {
-                floorRoomMap[floor] = [];
-            }
-            floorRoomMap[floor].push(id);
-        }
+      // Draw path in 3D scene
+      if (scene) {
+        drawPath(state.startLocation, state.endLocation)
+      }
+
+      updateButtonStates()
     }
-    
-    // Sort floors (8, 9, 10) and then sort rooms alphabetically within each floor
-    const sortedFloors = Object.keys(floorRoomMap).sort((a, b) => a - b);
-    
-    sortedFloors.forEach(floor => {
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = `Floor ${floor}`;
-        floorRoomMap[floor].sort().forEach(id => {
-            const option = document.createElement('option');
-            option.value = id;
-            // Add a friendly name if available
-            const name = NODES[id].tags.includes('staff_room') ? 'Staff Room' : NODES[id].tags.includes('lounge') ? 'Lounge' : 'Room';
-            option.textContent = `${id} (${name})`;
-            optgroup.appendChild(option);
-        });
-        startSelect.appendChild(optgroup.cloneNode(true));
-        endSelect.appendChild(optgroup);
-    });
-    
-    // Set initial values for demo convenience
-    startSelect.value = '809';
-    endSelect.value = '1001';
+  })
 
-    // Draw initial placeholder content
-    drawInitialMapPlaceholder();
-    // Initialize interaction handlers even if no path is calculated yet
-    initSceneInteraction(); 
-};
+  // Clear route handler
+  clearBtn.addEventListener("click", () => {
+    state.startLocation = ""
+    state.endLocation = ""
+    state.showRoute = false
+
+    startInput.value = ""
+    endInput.value = ""
+    routeInfo.style.display = "none"
+
+    // Remove path from 3D scene
+    if (pathLine) {
+      scene.remove(pathLine)
+      pathLine = null
+    }
+
+    updateButtonStates()
+  })
+
+  // Initialize Three.js scene
+  function initScene() {
+    // Remove placeholder
+    const placeholder = document.querySelector(".scene-placeholder")
+    if (placeholder) {
+      placeholder.remove()
+    }
+
+    // Create scene
+    scene = new window.THREE.Scene()
+    scene.background = new window.THREE.Color(0x0f172a)
+
+    // Create camera
+    camera = new window.THREE.PerspectiveCamera(75, sceneContainer.clientWidth / sceneContainer.clientHeight, 0.1, 1000)
+    camera.position.set(0, 25, 35)
+    camera.lookAt(0, 8, 0) // Look at the middle floor (Y=8)
+
+    // Create renderer
+    renderer = new window.THREE.WebGLRenderer({ antialias: true })
+    renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight)
+    sceneContainer.appendChild(renderer.domElement)
+
+    controls = new window.THREE.OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true // Smooth camera movement
+    controls.dampingFactor = 0.05
+    controls.minDistance = 20 // Minimum zoom distance
+    controls.maxDistance = 100 // Maximum zoom distance
+    controls.maxPolarAngle = Math.PI / 2 // Prevent camera from going below floor
+
+    // Add lights
+    const ambientLight = new window.THREE.AmbientLight(0xffffff, 0.6)
+    scene.add(ambientLight)
+
+    const directionalLight = new window.THREE.DirectionalLight(0xffffff, 0.8)
+    directionalLight.position.set(10, 20, 10)
+    scene.add(directionalLight)
+
+    // Create floor
+    createFloor()
+
+    // Handle window resize
+    window.addEventListener("resize", onWindowResize)
+
+    // Start animation loop
+    animate()
+  }
+
+  // Create 3D floor representation
+  function createFloor() {
+    // Remove existing floor if any
+    if (floorMesh) {
+      scene.remove(floorMesh)
+    }
+
+    const floors = [8, 9, 10]
+    const floorGroup = new window.THREE.Group()
+
+    floors.forEach((floorNum, index) => {
+      const yPosition = index * 8 // Stack floors 8 units apart vertically
+
+      // Create floor geometry
+      const floorGeometry = new window.THREE.BoxGeometry(30, 0.5, 20)
+      const floorMaterial = new window.THREE.MeshStandardMaterial({
+        color: 0x334155, // All floors same color
+        roughness: 0.8,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.6, // All floors same opacity
+      })
+      const floor = new window.THREE.Mesh(floorGeometry, floorMaterial)
+      floor.position.y = yPosition
+      floorGroup.add(floor)
+
+      // Add grid for each floor
+      const gridHelper = new window.THREE.GridHelper(30, 30, 0x475569, 0x334155)
+      gridHelper.position.y = yPosition + 0.3
+      gridHelper.material.transparent = true
+      gridHelper.material.opacity = 0.4 // All grids same opacity
+      floorGroup.add(gridHelper)
+
+      createStaircases(floorGroup, yPosition)
+
+      createRoomMarkersForFloor(floorGroup, yPosition, floorNum)
+    })
+
+    floorMesh = floorGroup
+    scene.add(floorMesh)
+  }
+
+  function createStaircases(parent, yPosition) {
+    const staircaseGeometry = new window.THREE.BoxGeometry(3, 8, 3)
+    const staircaseMaterial = new window.THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.7,
+      metalness: 0.3,
+    })
+
+    // Left staircase
+    const leftStaircase = new window.THREE.Mesh(staircaseGeometry, staircaseMaterial)
+    leftStaircase.position.set(-16, yPosition + 4, 0)
+    parent.add(leftStaircase)
+
+    // Right staircase
+    const rightStaircase = new window.THREE.Mesh(staircaseGeometry, staircaseMaterial)
+    rightStaircase.position.set(16, yPosition + 4, 0)
+    parent.add(rightStaircase)
+
+    // Add staircase labels
+    const canvas = document.createElement("canvas")
+    const context = canvas.getContext("2d")
+    canvas.width = 128
+    canvas.height = 64
+    context.fillStyle = "#ffffff"
+    context.font = "bold 24px Arial"
+    context.textAlign = "center"
+    context.fillText("STAIRS", 64, 40)
+
+    const texture = new window.THREE.CanvasTexture(canvas)
+    const labelMaterial = new window.THREE.SpriteMaterial({ map: texture })
+
+    const leftLabel = new window.THREE.Sprite(labelMaterial)
+    leftLabel.position.set(-16, yPosition + 8, 0)
+    leftLabel.scale.set(2, 1, 1)
+    parent.add(leftLabel)
+
+    const rightLabel = new window.THREE.Sprite(labelMaterial)
+    rightLabel.position.set(16, yPosition + 8, 0)
+    rightLabel.scale.set(2, 1, 1)
+    parent.add(rightLabel)
+  }
+
+  function createRoomMarkersForFloor(parent, yPosition, floorNum) {
+    const rooms = [
+      { name: `${floorNum}01`, x: -12, z: -8 },
+      { name: `${floorNum}02`, x: -8, z: -8 },
+      { name: `${floorNum}03`, x: -4, z: -8 },
+      { name: `${floorNum}04`, x: 0, z: -8 },
+      { name: `${floorNum}05`, x: 4, z: -8 },
+      { name: `${floorNum}06`, x: 8, z: -8 },
+      { name: `${floorNum}07`, x: 12, z: -8 },
+      { name: `${floorNum}08`, x: -8, z: 8 },
+      { name: `${floorNum}09`, x: 0, z: 8 },
+      { name: `${floorNum}10`, x: 8, z: 8 },
+    ]
+
+    rooms.forEach((room) => {
+      const markerGeometry = new window.THREE.CylinderGeometry(0.5, 0.5, 1, 32)
+      const markerMaterial = new window.THREE.MeshStandardMaterial({
+        color: 0x6366f1,
+        emissive: 0x6366f1,
+        emissiveIntensity: 0.3,
+      })
+      const marker = new window.THREE.Mesh(markerGeometry, markerMaterial)
+      marker.position.set(room.x, yPosition + 1, room.z)
+      parent.add(marker)
+
+      const canvas = document.createElement("canvas")
+      const context = canvas.getContext("2d")
+      canvas.width = 128
+      canvas.height = 64
+      context.fillStyle = "#ffffff"
+      context.font = "bold 20px Arial"
+      context.textAlign = "center"
+      context.fillText(room.name, 64, 40)
+
+      const texture = new window.THREE.CanvasTexture(canvas)
+      const labelMaterial = new window.THREE.SpriteMaterial({ map: texture })
+      const label = new window.THREE.Sprite(labelMaterial)
+      label.position.set(room.x, yPosition + 2.5, room.z)
+      label.scale.set(1.5, 0.75, 1)
+      parent.add(label)
+    })
+  }
+
+  function drawPath(startRoom, endRoom) {
+    // Remove existing path
+    if (pathLine) {
+      scene.remove(pathLine)
+    }
+
+    // Parse room numbers to determine floors
+    const startFloor = Math.floor(Number.parseInt(startRoom) / 100)
+    const endFloor = Math.floor(Number.parseInt(endRoom) / 100)
+
+    // Get room positions (simplified - in real app would look up actual positions)
+    const startPos = { x: -10, y: (startFloor - 8) * 8, z: -5 }
+    const endPos = { x: 10, y: (endFloor - 8) * 8, z: 5 }
+
+    const points = []
+
+    // Start at the starting room
+    points.push(new window.THREE.Vector3(startPos.x, startPos.y + 1, startPos.z))
+
+    // If different floors, navigate to nearest staircase
+    if (startFloor !== endFloor) {
+      // Determine which staircase is closer (left at x=-16 or right at x=16)
+      const useLeftStairs = Math.abs(startPos.x - -16) < Math.abs(startPos.x - 16)
+      const stairX = useLeftStairs ? -16 : 16
+
+      // Move to staircase on start floor
+      points.push(new window.THREE.Vector3(stairX, startPos.y + 1, 0))
+
+      // Go up/down the stairs
+      const floorDiff = endFloor - startFloor
+      for (let i = 1; i <= Math.abs(floorDiff); i++) {
+        const floorY = startPos.y + i * 8 * Math.sign(floorDiff)
+        points.push(new window.THREE.Vector3(stairX, floorY + 1, 0))
+      }
+
+      // Move from staircase to end room on destination floor
+      points.push(new window.THREE.Vector3(endPos.x, endPos.y + 1, endPos.z))
+    } else {
+      // Same floor - direct path with a slight curve
+      points.push(new window.THREE.Vector3((startPos.x + endPos.x) / 2, startPos.y + 2, (startPos.z + endPos.z) / 2))
+      points.push(new window.THREE.Vector3(endPos.x, endPos.y + 1, endPos.z))
+    }
+
+    const curve = new window.THREE.CatmullRomCurve3(points)
+    const pathPoints = curve.getPoints(100)
+    const pathGeometry = new window.THREE.BufferGeometry().setFromPoints(pathPoints)
+    const pathMaterial = new window.THREE.LineBasicMaterial({
+      color: 0x22c55e,
+      linewidth: 5,
+    })
+
+    pathLine = new window.THREE.Line(pathGeometry, pathMaterial)
+    scene.add(pathLine)
+  }
+
+  // Animation loop
+  function animate() {
+    requestAnimationFrame(animate)
+
+    if (controls) {
+      controls.update()
+    }
+
+    renderer.render(scene, camera)
+  }
+
+  // Handle window resize
+  function onWindowResize() {
+    camera.aspect = sceneContainer.clientWidth / sceneContainer.clientHeight
+    camera.updateProjectionMatrix()
+    renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight)
+  }
+
+  // Initialize button states
+  updateButtonStates()
+
+  // Initialize 3D scene after a short delay to ensure THREE is loaded
+  setTimeout(() => {
+    if (typeof window.THREE !== "undefined") {
+      initScene()
+    } else {
+      console.error("THREE.js failed to load from CDN")
+    }
+  }, 100)
+})
