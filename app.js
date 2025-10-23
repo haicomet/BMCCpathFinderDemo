@@ -3,6 +3,58 @@
 // Declare THREE variable as global
 window.THREE = window.THREE || {}
 
+// ============================================================================
+// ROOM CONFIGURATION - Edit these coordinates to match actual BMCC floor plan
+// ============================================================================
+// Coordinate system: X = left(-) to right(+), Z = back(-) to front(+)
+// The floor is 30 units wide (X: -15 to 15) and 20 units deep (Z: -10 to 10)
+// Staircases are at X: -16 (left) and X: 16 (right)
+// ============================================================================
+
+const ROOM_LAYOUT = {
+  8: [
+    // Floor 8 rooms
+    { name: "801", x: -12, z: -8 },
+    { name: "802", x: -8, z: -8 },
+    { name: "803", x: -4, z: -8 },
+    { name: "804", x: 0, z: -8 },
+    { name: "805", x: 4, z: -8 },
+    { name: "806", x: 8, z: -8 },
+    { name: "807", x: 12, z: -8 },
+    { name: "808", x: -8, z: 8 },
+    { name: "809", x: 0, z: 8 },
+    { name: "810", x: 8, z: 8 },
+  ],
+  9: [
+    // Floor 9 rooms
+    { name: "901", x: -12, z: -8 },
+    { name: "902", x: -8, z: -8 },
+    { name: "903", x: -4, z: -8 },
+    { name: "904", x: 0, z: -8 },
+    { name: "905", x: 4, z: -8 },
+    { name: "906", x: 8, z: -8 },
+    { name: "907", x: 12, z: -8 },
+    { name: "908", x: -8, z: 8 },
+    { name: "909", x: 0, z: 8 },
+    { name: "910", x: 8, z: 8 },
+  ],
+  10: [
+    // Floor 10 rooms
+    { name: "1001", x: -12, z: -8 },
+    { name: "1002", x: -8, z: -8 },
+    { name: "1003", x: -4, z: -8 },
+    { name: "1004", x: 0, z: -8 },
+    { name: "1005", x: 4, z: -8 },
+    { name: "1006", x: 8, z: -8 },
+    { name: "1007", x: 12, z: -8 },
+    { name: "1008", x: -8, z: 8 },
+    { name: "1009", x: 0, z: 8 },
+    { name: "1010", x: 8, z: 8 },
+  ],
+}
+
+// ============================================================================
+
 // State management
 const state = {
   startLocation: "",
@@ -229,18 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function createRoomMarkersForFloor(parent, yPosition, floorNum) {
-    const rooms = [
-      { name: `${floorNum}01`, x: -12, z: -8 },
-      { name: `${floorNum}02`, x: -8, z: -8 },
-      { name: `${floorNum}03`, x: -4, z: -8 },
-      { name: `${floorNum}04`, x: 0, z: -8 },
-      { name: `${floorNum}05`, x: 4, z: -8 },
-      { name: `${floorNum}06`, x: 8, z: -8 },
-      { name: `${floorNum}07`, x: 12, z: -8 },
-      { name: `${floorNum}08`, x: -8, z: 8 },
-      { name: `${floorNum}09`, x: 0, z: 8 },
-      { name: `${floorNum}10`, x: 8, z: 8 },
-    ]
+    const rooms = ROOM_LAYOUT[floorNum] || []
 
     rooms.forEach((room) => {
       const markerGeometry = new window.THREE.CylinderGeometry(0.5, 0.5, 1, 32)
