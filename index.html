@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BMCC Path Pointer</title>
+    <title>BMCC AI Navigator</title>
     <style>
         * {
             margin: 0;
@@ -24,8 +24,9 @@
             width: 100%;
         }
 
+        /* Redesigned sidebar for chat interface */
         .sidebar {
-            width: 320px;
+            width: 420px;
             background: #1e293b;
             border-right: 1px solid #334155;
             display: flex;
@@ -33,7 +34,7 @@
         }
 
         .header {
-            padding: 24px;
+            padding: 20px 24px;
             border-bottom: 1px solid #334155;
         }
 
@@ -46,8 +47,8 @@
         .logo {
             width: 40px;
             height: 40px;
-            background: #6366f1;
-            border-radius: 8px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -62,201 +63,226 @@
         }
 
         .title p {
-            font-size: 14px;
+            font-size: 13px;
             color: #94a3b8;
         }
 
-        .content {
+        /* Chat messages container */
+        .chat-container {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        .card {
-            background: #334155;
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
             border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 16px;
         }
 
-        .card h2 {
+        .message.user .message-avatar {
+            background: #6366f1;
+        }
+
+        .message.assistant .message-avatar {
+            background: #8b5cf6;
+        }
+
+        .message-content {
+            flex: 1;
+            background: #334155;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.6;
             font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 16px;
+        }
+
+        .message.user .message-content {
+            background: #6366f1;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: #334155;
+            color: #e2e8f0;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #94a3b8;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* Chat input area */
+        .chat-input-container {
+            padding: 16px 20px;
+            border-top: 1px solid #334155;
+            background: #1e293b;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #f1f5f9;
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            max-height: 120px;
+            min-height: 44px;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .chat-input::placeholder {
+            color: #64748b;
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            background: #6366f1;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #4f46e5;
+            transform: scale(1.05);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .connection-status {
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            font-size: 12px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .form-group {
-            margin-bottom: 16px;
+        .connection-status.connected {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+            color: #10b981;
         }
 
-        .form-group label {
-            display: block;
-            font-size: 14px;
-            margin-bottom: 8px;
-            color: #f1f5f9;
+        .connection-status.disconnected {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            color: #ef4444;
         }
 
-        .input-wrapper {
-            position: relative;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
         }
 
-        .input-wrapper input {
-            width: 100%;
-            padding: 10px 10px 10px 36px;
-            background: #1e293b;
-            border: 1px solid #475569;
-            border-radius: 6px;
-            color: #f1f5f9;
-            font-size: 14px;
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
         }
 
-        .input-wrapper input:focus {
-            outline: none;
-            border-color: #6366f1;
-        }
-
-        .input-icon {
+        .toggle-3d-btn {
             position: absolute;
-            left: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 8px;
-            margin-top: 16px;
-        }
-
-        .btn {
-            flex: 1;
+            top: 20px;
+            right: 20px;
             padding: 10px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: #6366f1;
-            color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            background: #4f46e5;
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-outline {
-            background: transparent;
-            color: #f1f5f9;
+            background: #334155;
             border: 1px solid #475569;
-        }
-
-        .btn-outline:hover:not(:disabled) {
-            background: #334155;
-        }
-
-        .btn-outline:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .floor-selection h3 {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .floor-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-        }
-
-        .floor-btn {
-            padding: 12px;
-            border: 2px solid #475569;
             border-radius: 8px;
-            background: #334155;
             color: #f1f5f9;
+            font-size: 14px;
             cursor: pointer;
             transition: all 0.2s;
-            text-align: center;
+            z-index: 10;
         }
 
-        .floor-btn:hover {
-            border-color: #6366f1;
-        }
-
-        .floor-btn.active {
-            border-color: #6366f1;
-            background: #6366f1;
-            color: white;
-        }
-
-        .floor-label {
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .floor-number {
-            font-size: 24px;
-            font-weight: bold;
-        }
-
-        .route-info {
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid #6366f1;
-            border-radius: 8px;
-            padding: 16px;
-            margin-top: 24px;
-        }
-
-        .route-info h3 {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .route-step {
-            display: flex;
-            align-items: start;
-            gap: 8px;
-            margin-bottom: 8px;
-            font-size: 14px;
-            color: #cbd5e1;
-        }
-
-        .step-badge {
+        .toggle-3d-btn:hover {
             background: #475569;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 2px;
-        }
-
-        .footer {
-            padding: 16px;
-            border-top: 1px solid #334155;
-            text-align: center;
-        }
-
-        .footer p {
-            font-size: 12px;
-            color: #94a3b8;
         }
 
         .scene {
@@ -266,6 +292,10 @@
             align-items: center;
             justify-content: center;
             position: relative;
+        }
+
+        .scene.hidden {
+            display: none;
         }
 
         .scene-placeholder {
@@ -286,64 +316,76 @@
             width: 100%;
             height: 100%;
         }
+
+        /* Scrollbar styling */
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Sidebar -->
+        <!-- Sidebar with Chat -->
         <div class="sidebar">
             <div class="header">
                 <div class="header-content">
-                    <div class="logo">📍</div>
+                    <div class="logo">🤖</div>
                     <div class="title">
-                        <h1>BMCC</h1>
-                        <p>Path Pointer</p>
+                        <h1>BMCC AI Navigator</h1>
+                        <p>Ask me how to find any classroom</p>
                     </div>
                 </div>
             </div>
 
-            <div class="content">
-                <div class="card">
-                    <h2>🗺️ Route Configuration</h2>
-                    
-                    <div class="form-group">
-                        <label for="start">Starting Location</label>
-                        <div class="input-wrapper">
-                            <span class="input-icon">📍</span>
-                            <input type="text" id="start" placeholder="e.g., Room 1001">
-                        </div>
+            <!-- Chat messages area -->
+            <div class="chat-container" id="chatContainer">
+                <div class="message assistant">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content">
+                        Hi! I'm your BMCC navigation assistant. Ask me how to get to any classroom, and I'll guide you there. For example, try "How do I get to room 901?"
                     </div>
-
-                    <div class="form-group">
-                        <label for="end">Ending Location</label>
-                        <div class="input-wrapper">
-                            <span class="input-icon">📍</span>
-                            <input type="text" id="end" placeholder="e.g., Room 805">
-                        </div>
-                    </div>
-
-                    <div class="button-group">
-                        <button class="btn btn-primary" id="findRouteBtn" disabled>Find Route</button>
-                        <button class="btn btn-outline" id="clearBtn" disabled>Clear</button>
-                    </div>
-                </div>
-
-                <div id="routeInfo" style="display: none;" class="route-info">
-                    <h3>Route Found</h3>
-                    <div id="routeSteps"></div>
                 </div>
             </div>
 
-            <div class="footer">
-                <p>Interactive 3D Floor Navigation</p>
+            <!-- Chat input area -->
+            <div class="chat-input-container">
+                <div id="connectionStatus" class="connection-status disconnected">
+                    <span class="status-dot"></span>
+                    <span>Checking Ollama connection...</span>
+                </div>
+                <div class="chat-input-wrapper">
+                    <textarea 
+                        id="chatInput" 
+                        class="chat-input" 
+                        placeholder="Ask me how to find a classroom..."
+                        rows="1"
+                    ></textarea>
+                    <button id="sendBtn" class="send-btn" disabled>
+                        ➤
+                    </button>
+                </div>
             </div>
         </div>
 
         <!-- 3D Scene -->
-        <div class="scene">
+        <div class="scene" id="sceneContainer">
+            <button class="toggle-3d-btn" id="toggle3DBtn">Hide 3D View</button>
             <div class="scene-placeholder">
                 <h2>🏢 BMCC Floor Navigator</h2>
-                <p>Select locations to find your route</p>
+                <p>3D visualization will appear here</p>
             </div>
         </div>
     </div>
